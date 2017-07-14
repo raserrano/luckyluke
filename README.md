@@ -31,6 +31,7 @@ Lucky Luke is a reimplementation of Dr. Phil, but instead of voting for new arti
         * `skip_tags`
         * `flag_signals`
         * `vote_signals`
+* `bots` is a list of bots to watch `transfer` operations for.
 * Skip posts with declined payout.
 * Skip posts that already have votes from external scripts and posts that were edited.
 * Argument called `replay:` allows a replay of *n* blocks allowing you to catch up to the present.

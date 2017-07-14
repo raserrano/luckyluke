@@ -1,0 +1,26 @@
+:voting_rules:
+  :vote_weight: 100.00 %
+  :min_transfer: 0.001 SBD
+  :enable_comments: false
+  :min_wait: 18
+  :max_wait: 30
+  :min_rep: 25.0
+  :max_rep: 99.9
+  :min_voting_power: 25.00 %
+  
+:voters:
+  - social 5JrvPrQeBBvCRdjv29iDvkwn3EQYZ9jqfAHzrCyUvfbEbRkrYFC
+  - bad.account 5XXXBadWifXXXdjv29iDvkwn3EQYZ9jqfAHzrCyUvfbEbRkrYFC
+
+:bots: booster
+:skip_accounts: leeroy.jenkins the.masses danlarimer ned-reddit-login
+:skip_tags: nsfw test
+# :only_tags: steemit
+# :only_apps: steemit esteem streemian pysteem steepshot busy chainbb banjo_bot chronicle steemq
+# :skip_apps: piston
+:flag_signals: cheetah steemcleaners
+:vote_signals: 
+
+:chain_options:
+  :chain: steem
+  :url: https://steemd.steemit.com

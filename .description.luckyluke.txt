@@ -1,1 +1,1 @@
-lucky luke
+Lucky Luke ('luckyluke.rb') for STEEM.  Please have a look at the README.md file.

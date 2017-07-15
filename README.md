@@ -2,7 +2,7 @@
 * Tags: radiator ruby steem steemdev curation
 * Notes: 
 
-Lucky Luke is a reimplementation of Dr. Phil, but instead of voting for new articles, it votes for posts mentioned in the memo field of a `transfer` operation.  By default, it votes for any `transfer` sent to `booster` but you can configure any bot that receives pay-for-vote transfers.  You can also set a minimum transfer amount to ignore small amounts.
+Lucky Luke is a reimplementation of [Dr. Phil](https://gist.github.com/inertia186/61bcc2b821aa5acb24f7fc88921950c7), but instead of voting for new articles, it votes for posts mentioned in the memo field of a `transfer` operation.  By default, it votes for any `transfer` sent to `booster` but you can configure any bot that receives pay-for-vote transfers.  You can also set a minimum transfer amount to ignore small amounts.
 
 #### Features
 

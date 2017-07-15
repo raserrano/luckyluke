@@ -13,6 +13,11 @@ Bundler.require
 # If there are problems, this is the most time we'll wait (in seconds).
 MAX_BACKOFF = 12.8
 
+VOTE_RECHARGE_PER_DAY = 20.0
+VOTE_RECHARGE_PER_HOUR = VOTE_RECHARGE_PER_DAY / 24
+VOTE_RECHARGE_PER_MINUTE = VOTE_RECHARGE_PER_HOUR / 60
+VOTE_RECHARGE_PER_SEC = VOTE_RECHARGE_PER_MINUTE / 60
+
 @config_path = __FILE__.sub(/\.rb$/, '.yml')
 
 unless File.exist? @config_path
@@ -131,12 +136,18 @@ def poll_voting_power
     accounts = response.result
     
     accounts.each do |account|
-      @voting_power[account.name] = account.voting_power
+      voting_power = account.voting_power / 100.0
+      last_vote_time = Time.parse(account.last_vote_time + 'Z')
+      voting_elapse = Time.now.utc - last_vote_time
+      current_voting_power = voting_power + (voting_elapse * VOTE_RECHARGE_PER_SEC)
+      current_voting_power = [10000, current_voting_power].min.to_i * 100
+      
+      @voting_power[account.name] = current_voting_power
     end
     
-    @min_voting_power = accounts.map(&:voting_power).min
-    @max_voting_power = accounts.map(&:voting_power).max
-    @average_voting_power = accounts.map(&:voting_power).inject(:+) / accounts.size
+    @min_voting_power = @voting_power.values.min
+    @max_voting_power = @voting_power.values.max
+    @average_voting_power = @voting_power.values.reduce(0, :+) / accounts.size
   end
 end
 
@@ -167,29 +178,6 @@ def voters_recharging
   @voting_power.map do |voter, power|
     voter if power < @voting_rules.min_voting_power
   end.compact
-end
-
-def voters_check_charging
-  @semaphore.synchronize do
-    return [] if (Time.now.utc.to_i - @voters_check_charging_at.to_i) < 300
-    
-    @voters_check_charging_at = Time.now.utc
-    
-    @voting_power.map do |voter, power|
-      if power < @voting_rules.min_voting_power
-        check_time = 4320 # TODO Make this dynamic based on effective voting power
-        response = @api.get_account_votes(voter)
-        votes = response.result
-        latest_vote_at = if votes.any? && !!(time = votes.last.time)
-          Time.parse(time + 'Z')
-        end
-        
-        elapsed = Time.now.utc.to_i - latest_vote_at.to_i
-        
-        voter if elapsed > check_time
-      end
-    end.compact
-  end
 end
 
 def skip_tags_intersection?(json_metadata)
@@ -341,8 +329,7 @@ def vote(comment, wait_offset = 0)
   end
   
   @threads[slug] = Thread.new do
-    check_charging = voters_check_charging
-    voters = @voters.keys - comment.active_votes.map(&:voter) - voters_recharging - voters_recharging + check_charging
+    voters = @voters.keys - comment.active_votes.map(&:voter) - voters_recharging
     
     return if skip?(comment, voters)
     
@@ -383,11 +370,6 @@ def vote(comment, wait_offset = 0)
             puts "Recharging #{voter} vote power (currently too low: #{('%.3f' % vp)} %)"
           else
             puts "Recharging vote power (currently too low: #{('%.3f' % vp)} %)"
-          end
-          
-          unless check_charging.include? voter
-            voters -= [voter]
-            next
           end
         end
                 

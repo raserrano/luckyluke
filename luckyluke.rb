@@ -85,8 +85,11 @@ rules = @config[:voting_rules]
 @voting_rules = {
   vote_weight: (((rules[:vote_weight] || '100.0 %').to_f) * 100).to_i,
   min_transfer: rules[:min_transfer],
-  min_transfer_asset: rules[:min_transfer].split(' ').last,
-  min_transfer_amount: rules[:min_transfer].split(' ').first.to_f,
+  min_transfer_asset: rules[:min_transfer].to_s.split(' ').last,
+  min_transfer_amount: rules[:min_transfer].to_s.split(' ').first.to_f,
+  max_transfer: rules[:max_transfer],
+  max_transfer_asset: rules[:max_transfer].to_s.split(' ').last,
+  max_transfer_amount: rules[:max_transfer].to_s.split(' ').first.to_f,
   enable_comments: rules[:enable_comments],
   min_wait: rules[:min_wait].to_i,
   max_wait: rules[:max_wait].to_i,
@@ -216,8 +219,16 @@ end
 
 def valid_transfer?(transfer)
   return false unless @bots.include? transfer.to
-  return false unless transfer.amount.split(' ').last == @voting_rules.min_transfer_asset
-  return false unless transfer.amount.split(' ').first.to_f >= @voting_rules.min_transfer_amount
+  
+  if !@voting_rules.min_transfer.nil?
+    return false unless transfer.amount.split(' ').last == @voting_rules.min_transfer_asset
+    return false unless transfer.amount.split(' ').first.to_f >= @voting_rules.min_transfer_amount
+  end
+  
+  if !@voting_rules.max_transfer.nil?
+    return false unless transfer.amount.split(' ').last == @voting_rules.max_transfer_asset
+    return false unless transfer.amount.split(' ').first.to_f <= @voting_rules.max_transfer_amount
+  end
   
   true
 end

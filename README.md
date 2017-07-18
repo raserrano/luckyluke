@@ -4,6 +4,10 @@
 
 Lucky Luke is a reimplementation of [Dr. Phil](https://gist.github.com/inertia186/61bcc2b821aa5acb24f7fc88921950c7), but instead of voting for new articles, it votes for posts mentioned in the memo field of a `transfer` operation.  By default, it votes for any `transfer` sent to `booster` but you can configure any bot that receives pay-for-vote transfers.  You can also set a minimum transfer amount to ignore small amounts.
 
+#### New Features
+
+* `max_transfer` allows you to specify the maximum amount in the `transfer` to vote on, which is useful when running multiple instances with voting tiers.
+
 #### Features
 
 * YAML config.

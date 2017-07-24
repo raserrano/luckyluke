@@ -233,6 +233,15 @@ def valid_transfer?(transfer)
   true
 end
 
+# The rationale here is to find out if the bots have already voted because
+# there's no way to front-run if this happens, so we need to know if this
+# comment should be skipped.
+def bots_already_voted?(comment)
+  all_voters = comment.active_votes.map(&:voter)
+  
+  (all_voters & @bots).any?
+end
+
 def may_vote?(comment)
   return false if !@voting_rules.enable_comments && !comment.parent_author.empty?
   return false if @skip_tags.include? comment.parent_permlink
@@ -241,6 +250,7 @@ def may_vote?(comment)
   return false if @skip_accounts.include? comment.author
   return false if skip_app? comment.json_metadata
   return false unless only_app? comment.json_metadata
+  return false if bots_already_voted?(comment)
   
   true
 end

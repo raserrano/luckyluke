@@ -94,6 +94,7 @@ rules = @config[:voting_rules]
   min_wait: rules[:min_wait].to_i,
   max_wait: rules[:max_wait].to_i,
   min_voting_power: (((rules[:min_voting_power] || '0.0 %').to_f) * 100).to_i,
+  max_age: rules[:max_age].to_i,
 }
 
 @voting_rules[:wait_range] = [@voting_rules[:min_wait]..@voting_rules[:max_wait]]
@@ -287,6 +288,11 @@ def skip?(comment, voters)
     end
   end
   
+  if ((Time.now.utc - (created = Time.parse(comment.created + 'Z'))).to_i / 60) > @voting_rules.max_age
+    puts "Skipped, too old (#{created}):\n\t@#{comment.author}/#{comment.permlink}"
+    return true
+  end
+  
   if comment.max_accepted_payout.split(' ').first == '0.000'
     puts "Skipped, payout declined:\n\t@#{comment.author}/#{comment.permlink}"
     return true
@@ -427,6 +433,12 @@ def vote(comment, wait_offset = 0)
           elsif message.to_s =~ /STEEMIT_UPVOTE_LOCKOUT_HF17/
             puts "\tFailed: upvote lockout (last twelve hours before payout)"
             break
+          elsif message.to_s =~ /tapos_block_summary/
+            warning "Retrying: tapos_block_summary (?)"
+            redo
+          elsif message.to_s =~ /now < trx.expiration/
+            warning "Retrying: now < trx.expiration (?)"
+            redo
           elsif message.to_s =~ /signature is not canonical/
             puts "\tRetrying: signature was not canonical (bug in Radiator?)"
             redo

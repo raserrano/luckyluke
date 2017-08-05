@@ -7,6 +7,7 @@ Lucky Luke is a reimplementation of [Dr. Phil](https://gist.github.com/inertia18
 #### New Features
 
 * `max_transfer` allows you to specify the maximum amount in the `transfer` to vote on, which is useful when running multiple instances with voting tiers.
+* `max_age` allows you to only upvote newer content, for example, avoiding posts that are about to become locked.
 
 #### Features
 

@@ -90,6 +90,7 @@ rules = @config[:voting_rules]
   max_transfer: rules[:max_transfer],
   max_transfer_asset: rules[:max_transfer].to_s.split(' ').last,
   max_transfer_amount: rules[:max_transfer].to_s.split(' ').first.to_f,
+  only_above_average_transfers: rules[:only_above_average_transfers],
   enable_comments: rules[:enable_comments],
   min_wait: rules[:min_wait].to_i,
   max_wait: rules[:max_wait].to_i,
@@ -184,6 +185,24 @@ def voters_recharging
   end.compact
 end
 
+def above_average_transfer?(bot, amount, asset)
+  response = @api.get_account_history(bot, -1000, 1000)
+  inputs = response.result.map do |index, transaction|
+    type, op = transaction.op
+    next unless type == 'transfer'
+    next unless op.to == bot
+    next unless op.amount =~ /#{asset}$/
+    
+    op.amount.split(' ').first.to_f
+  end.compact
+  
+  sum = inputs.reduce(0, :+)
+  return true if sum == 0.0
+  
+  average = sum / inputs.size
+  amount > average
+end
+
 def skip_tags_intersection?(json_metadata)
   metadata = JSON[json_metadata || '{}']
   tags = metadata['tags'] || [] rescue []
@@ -219,16 +238,21 @@ def only_app?(json_metadata)
 end
 
 def valid_transfer?(transfer)
-  return false unless @bots.include? transfer.to
+  to = transfer.to
+  amount = transfer.amount.split(' ').first.to_f
+  asset = transfer.amount.split(' ').last 
+  
+  return false unless @bots.include? to
+  return false if @voting_rules.only_above_average_transfers && !above_average_transfer?(to, amount, asset)
   
   if !@voting_rules.min_transfer.nil?
-    return false unless transfer.amount.split(' ').last == @voting_rules.min_transfer_asset
-    return false unless transfer.amount.split(' ').first.to_f >= @voting_rules.min_transfer_amount
+    return false unless asset == @voting_rules.min_transfer_asset
+    return false unless amount >= @voting_rules.min_transfer_amount
   end
   
   if !@voting_rules.max_transfer.nil?
-    return false unless transfer.amount.split(' ').last == @voting_rules.max_transfer_asset
-    return false unless transfer.amount.split(' ').first.to_f <= @voting_rules.max_transfer_amount
+    return false unless asset == @voting_rules.max_transfer_asset
+    return false unless amount <= @voting_rules.max_transfer_amount
   end
   
   true

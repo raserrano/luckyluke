@@ -2,7 +2,7 @@
   :vote_weight: 100.00 %
   :min_transfer: 0.001 SBD
   # :max_transfer: 100.000 SBD
-  :only_above_average_transfers: true
+  :only_above_average_transfers: false
   :enable_comments: false
   :min_wait: 18
   :max_wait: 30

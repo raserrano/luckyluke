@@ -145,7 +145,12 @@ def poll_voting_power
       last_vote_time = Time.parse(account.last_vote_time + 'Z')
       voting_elapse = Time.now.utc - last_vote_time
       current_voting_power = voting_power + (voting_elapse * VOTE_RECHARGE_PER_SEC)
-      current_voting_power = [10000, current_voting_power].min.to_i * 100
+      wasted_voting_power = [current_voting_power - 100.0, 0.0].max
+      current_voting_power = ([100.0, current_voting_power].min * 100).to_i
+      
+      if wasted_voting_power > 0
+        puts "\t#{account.name} wasted voting power: #{('%.2f' % wasted_voting_power)} %"
+      end
       
       @voting_power[account.name] = current_voting_power
     end

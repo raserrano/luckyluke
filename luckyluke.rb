@@ -430,6 +430,10 @@ def vote(comment, wait_offset = 0)
             puts "\tFailed: voting weight too small"
             voters -= [voter]
             next
+          elsif message.to_s =~ /tx_missing_posting_auth: missing required posting authority/
+            puts "\tFailed: missing required posting authority (#{voter})"
+            voters -= [voter]
+            next
           elsif message.to_s =~ /STEEMIT_UPVOTE_LOCKOUT_HF17/
             puts "\tFailed: upvote lockout (last twelve hours before payout)"
             break

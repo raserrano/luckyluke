@@ -6,6 +6,8 @@ Lucky Luke is a reimplementation of [Dr. Phil](https://gist.github.com/inertia18
 
 #### New Features
 
+* `only_above_average_transfers` allows voters to only vote if the transfer is above average for that bot.
+* 'history_limit' used when `only_above_average_transfers` is true to set how far back to calculate an average
 * `max_transfer` allows you to specify the maximum amount in the `transfer` to vote on, which is useful when running multiple instances with voting tiers.
 * `max_age` allows you to only upvote newer content, for example, avoiding posts that are about to become locked.
 

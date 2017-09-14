@@ -2,12 +2,12 @@
 * Tags: radiator ruby steem steemdev curation
 * Notes: 
 
-Lucky Luke is a reimplementation of [Dr. Phil](https://gist.github.com/inertia186/61bcc2b821aa5acb24f7fc88921950c7), but instead of voting for new articles, it votes for posts mentioned in the memo field of a `transfer` operation.  By default, it votes for any `transfer` sent to `booster` but you can configure any bot that receives pay-for-vote transfers.  You can also set a minimum transfer amount to ignore small amounts.
+Lucky Luke is a reimplementation of [Dr. Phil](https://gist.github.com/inertia186/61bcc2b821aa5acb24f7fc88921950c7), but instead of voting for new articles, it votes for posts mentioned in the memo field of a `transfer` operation.  By default, it votes for any `transfer` sent to @booster but you can configure any bot that receives pay-for-vote transfers (or even @null).  You can also set a minimum transfer amount to ignore small amounts.
 
 #### New Features
 
 * `only_above_average_transfers` allows voters to only vote if the transfer is above average for that bot.
-* 'history_limit' used when `only_above_average_transfers` is true to set how far back to calculate an average
+* `history_limit` used when `only_above_average_transfers` is true to set how far back to calculate an average.
 * `max_transfer` allows you to specify the maximum amount in the `transfer` to vote on, which is useful when running multiple instances with voting tiers.
 * `max_age` allows you to only upvote newer content, for example, avoiding posts that are about to become locked.
 

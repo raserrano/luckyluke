@@ -91,6 +91,7 @@ rules = @config[:voting_rules]
   max_transfer_asset: rules[:max_transfer].to_s.split(' ').last,
   max_transfer_amount: rules[:max_transfer].to_s.split(' ').first.to_f,
   only_above_average_transfers: rules[:only_above_average_transfers],
+  history_limit: rules[:history_limit].to_i,
   enable_comments: rules[:enable_comments],
   min_wait: rules[:min_wait].to_i,
   max_wait: rules[:max_wait].to_i,
@@ -191,7 +192,7 @@ def voters_recharging
 end
 
 def above_average_transfer?(bot, amount, asset)
-  response = @api.get_account_history(bot, -1000, 1000)
+  response = @api.get_account_history(bot, -history_limit, history_limit)
   inputs = response.result.map do |index, transaction|
     type, op = transaction.op
     next unless type == 'transfer'
@@ -467,10 +468,10 @@ def vote(comment, wait_offset = 0)
             puts "\tFailed: upvote lockout (last twelve hours before payout)"
             break
           elsif message.to_s =~ /tapos_block_summary/
-            warning "Retrying: tapos_block_summary (?)"
+            puts "Retrying: tapos_block_summary (?)"
             redo
           elsif message.to_s =~ /now < trx.expiration/
-            warning "Retrying: now < trx.expiration (?)"
+            puts "Retrying: now < trx.expiration (?)"
             redo
           elsif message.to_s =~ /signature is not canonical/
             puts "\tRetrying: signature was not canonical (bug in Radiator?)"

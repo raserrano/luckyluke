@@ -192,7 +192,7 @@ def voters_recharging
 end
 
 def above_average_transfer?(bot, amount, asset)
-  response = @api.get_account_history(bot, -history_limit, history_limit)
+  response = @api.get_account_history(bot, -@voting_rules.history_limit, @voting_rules.history_limit)
   inputs = response.result.map do |index, transaction|
     type, op = transaction.op
     next unless type == 'transfer'

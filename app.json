@@ -1,0 +1,12 @@
+{
+  "name": "Lucky Luke",
+  "description": "This bot votes for posts mentioned in the memo field of a transfer operation. By default, it votes for any transfer sent to @booster but you can configure any bot that receives pay-for-vote transfers (or even @null).",
+  "image": "heroku/ruby",
+  "repository": "https://gist.github.com/07cfb044f625beb22724371b85cea0e4",
+  "keywords": ["radiator", "ruby", "steem", "steemit", "steemdev", "curation"],
+  "env": {
+  	"STEEM_USER": "social",
+  	"POSTING_KEY_PRV": "5JrvPrQeBBvCRdjv29iDvkwn3EQYZ9jqfAHzrCyUvfbEbRkrYFC",
+  	"BOTS": "booster"
+  }
+}

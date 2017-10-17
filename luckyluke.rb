@@ -99,6 +99,7 @@ rules = @config[:voting_rules]
   min_wait: rules[:min_wait].to_i,
   max_wait: rules[:max_wait].to_i,
   min_voting_power: (((rules[:min_voting_power] || '0.0 %').to_f) * 100).to_i,
+  reserve_voting_power: (((rules[:reserve_voting_power] || '0.0 %').to_f) * 100).to_i,
   max_age: rules[:max_age].to_i,
 }
 
@@ -197,9 +198,15 @@ def summary_voting_power
   summary.join('; ')
 end
 
-def voters_recharging
+def voters_recharging(weight)
+  target_voting_power = if weight < 10000
+    @voting_rules.min_voting_power
+  else
+    @voting_rules.min_voting_power - @voting_rules.reserve_voting_power
+  end
+  
   @voting_power.map do |voter, power|
-    voter if power < @voting_rules.min_voting_power
+    voter if power < target_voting_power
   end.compact
 end
 
@@ -458,7 +465,8 @@ def vote(comment, wait_offset, transfer)
   votes_cast = 0
   backoff = 0.2
   slug = "@#{comment.author}/#{comment.permlink}"
-  voters = active_voters - comment.active_votes.map(&:voter) - voters_recharging
+  weight = vote_weight(transfer)
+  voters = active_voters - comment.active_votes.map(&:voter) - voters_recharging(weight)
 
   return if skip?(comment, voters)
 
@@ -488,7 +496,6 @@ def vote(comment, wait_offset, transfer)
       author = comment.author
       permlink = comment.permlink
       voter = voters.sample
-      weight = vote_weight(transfer)
       
       break if weight == 0.0
       

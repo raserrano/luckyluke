@@ -6,7 +6,8 @@ Lucky Luke is a reimplementation of [Dr. Phil](https://gist.github.com/inertia18
 
 #### New Features
 
-  * `vote_weight` can now be either a static percentage (like `100.00 %`) or `dynamic`.  When using `dynamic`, the vote is compared to account history.  If the transfer is higher than the maximum transfer in history, the vote will be 100%.  Otherwise, the transfer amount is divided by the maximum.  History is set by `history_limit`.
+  * `vote_weight` can now be either a static percentage (like `100.00 %`) or `dynamic`.  When using `dynamic`, the vote is compared to account history.  If the transfer is equal to or greater than the maximum transfer in history, the vote will be 100%.  Otherwise, the transfer amount is divided by the maximum.  History is set by `history_limit`.
+  * `reserve_voting_power` will allow the bot to exceed `min_voting_power` by the amount specified when a transfer is equal to or greater than the maximum transfer in history.
 
 #### Features
 

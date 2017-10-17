@@ -6,10 +6,7 @@ Lucky Luke is a reimplementation of [Dr. Phil](https://gist.github.com/inertia18
 
 #### New Features
 
-* `only_above_average_transfers` allows voters to only vote if the transfer is above average for that bot.
-* `history_limit` used when `only_above_average_transfers` is true to set how far back to calculate an average.
-* `max_transfer` allows you to specify the maximum amount in the `transfer` to vote on, which is useful when running multiple instances with voting tiers.
-* `max_age` allows you to only upvote newer content, for example, avoiding posts that are about to become locked.
+  * `vote_weight` can now be either a static percentage (like `100.00 %`) or `dynamic`.  When using `dynamic`, the vote is compared to account history.  If the transfer is higher than the maximum transfer in history, the vote will be 100%.  Otherwise, the transfer amount is divided by the maximum.  History is set by `history_limit`.
 
 #### Features
 
@@ -19,16 +16,18 @@ Lucky Luke is a reimplementation of [Dr. Phil](https://gist.github.com/inertia18
     * `min_wait` and `max_wait` (in minutes) so that you can fine-tune voting delay.
     * `enable_comments` option to vote for post replies (default false).
     * `max_rep` option, useful for limiting votes to newer authors (default 99.9).
+    * `min_rep` can accept either a static reputation or a dynamic property.
+      * Existing static reputation still supported, e.g.: `25.0`
+      * Dynamic reputation, e.g.: `dynamic:100`.  This will occasionally query the top 100 trending posts and use the minimum author reputation.
+    * `min_voting_power` to create a floor with will allow the voter to recharge over time without having to stop the script.
     * `vote_signals` account list.
       * Optionally allows multiple bot instances to cooperate by avoiding vote swarms.
       * If enabled, this feature allows cooperation without sharing keys.
-    * `min_rep` can now accept either a static reputation or a dynamic property.
-      * Existing static reputation still supported, e.g.: `25.0`
-      * Dynamic reputation, e.g.: `dynamic:100`.  This will occasionally query the top 100 trending posts and use the minimum author reputation.
-      * Checking `vote_weight: 0.00 %` and skipping without broadcast.
-        * This is useful for special configurations that *only* vote for favorites.
-      * `min_voting_power` to create a floor with will allow the voter to recharge over time without having to stop the script.
     * `only_tags` (optional) which only votes on posts that include these tags.
+    * `only_above_average_transfers` allows voters to only vote if the transfer is above average for that bot.
+    * `history_limit` used when `only_above_average_transfers` is true or `vote_weight` is `dynamic` to set how far back to calculate.
+    * `max_transfer` allows you to specify the maximum amount in the `transfer` to vote on, which is useful when running multiple instances with voting tiers.
+    * `max_age` allows you to only upvote newer content, for example, avoiding posts that are about to become locked.
     * Optionally configure `voters` as a separate filename.  E.g:
       * `voters: voters.txt`
         * The format for the file is just: `account wif` (no leading dash, separated by space)

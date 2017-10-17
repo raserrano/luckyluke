@@ -6,9 +6,11 @@
 require 'rubygems'
 require 'bundler/setup'
 require 'yaml'
-require 'pry'
+# require 'irb'
 
 Bundler.require
+
+defined? Thread.report_on_exception and Thread.report_on_exception = true
 
 # If there are problems, this is the most time we'll wait (in seconds).
 MAX_BACKOFF = 12.8
@@ -19,6 +21,7 @@ VOTE_RECHARGE_PER_MINUTE = VOTE_RECHARGE_PER_HOUR / 60
 VOTE_RECHARGE_PER_SEC = VOTE_RECHARGE_PER_MINUTE / 60
 
 @config_path = __FILE__.sub(/\.rb$/, '.yml')
+@account_history = {}
 
 unless File.exist? @config_path
   puts "Unable to find: #{@config_path}"
@@ -83,7 +86,7 @@ end
 rules = @config[:voting_rules]
 
 @voting_rules = {
-  vote_weight: (((rules[:vote_weight] || '100.0 %').to_f) * 100).to_i,
+  vote_weight: rules[:vote_weight],
   min_transfer: rules[:min_transfer],
   min_transfer_asset: rules[:min_transfer].to_s.split(' ').last,
   min_transfer_amount: rules[:min_transfer].to_s.split(' ').first.to_f,
@@ -98,6 +101,10 @@ rules = @config[:voting_rules]
   min_voting_power: (((rules[:min_voting_power] || '0.0 %').to_f) * 100).to_i,
   max_age: rules[:max_age].to_i,
 }
+
+unless @voting_rules[:vote_weight] == 'dynamic'
+  @voting_rules[:vote_weight] = (((@voting_rules[:vote_weight] || '100.0 %').to_f) * 100).to_i
+end
 
 @voting_rules[:wait_range] = [@voting_rules[:min_wait]..@voting_rules[:max_wait]]
 
@@ -116,6 +123,7 @@ end
 @only_apps = parse_list(@config[:only_apps])
 @flag_signals = parse_list(@config[:flag_signals])
 @vote_signals = parse_list(@config[:vote_signals])
+@voters_disabled = {}
 
 @options = @config[:chain_options]
 @options[:logger] = Logger.new(__FILE__.sub(/\.rb$/, '.log'))
@@ -136,9 +144,13 @@ def to_rep(raw)
   level
 end
 
+def active_voters
+  @voters.keys - @voters_disabled.keys
+end
+
 def poll_voting_power
   @semaphore.synchronize do
-    response = @api.get_accounts(@voters.keys)
+    response = @api.get_accounts(active_voters)
     accounts = response.result
     
     accounts.each do |account|
@@ -191,9 +203,32 @@ def voters_recharging
   end.compact
 end
 
-def above_average_transfer?(bot, amount, asset)
-  response = @api.get_account_history(bot, -@voting_rules.history_limit, @voting_rules.history_limit)
-  inputs = response.result.map do |index, transaction|
+def account_history(bot)
+  @account_history[bot] = nil if rand < 0.05
+  limit = @voting_rules.history_limit
+  
+  if @account_history[bot].nil?
+    args = [bot, -limit, limit]
+    @account_history[bot] = @api.get_account_history(*args) do |history, error|
+      history unless !!error
+    end
+  else
+    limit = (limit / 10).to_i
+    if limit > 0
+      args = [bot, -limit, limit]
+      @account_history[bot] += @api.get_account_history(*args) do |history, error|
+        history unless !!error
+      end
+      
+      @account_history[bot] = @account_history[bot].uniq
+    end
+  end
+  
+  @account_history[bot]
+end
+
+def average_transfer(bot, asset)
+  inputs = account_history(bot).map do |index, transaction|
     type, op = transaction.op
     next unless type == 'transfer'
     next unless op.to == bot
@@ -205,8 +240,24 @@ def above_average_transfer?(bot, amount, asset)
   sum = inputs.reduce(0, :+)
   return true if sum == 0.0
   
-  average = sum / inputs.size
-  amount > average
+  sum / inputs.size
+end
+
+def above_average_transfer?(bot, amount, asset)
+  amount > average_transfer(bot, asset)
+end
+
+def max_transfer(bot, asset)
+  inputs = account_history(bot).map do |index, transaction|
+    type, op = transaction.op
+    next unless type == 'transfer'
+    next unless op.to == bot
+    next unless op.amount =~ /#{asset}$/
+    
+    op.amount.split(' ').first.to_f
+  end.compact
+  
+  inputs.max || 0.0
 end
 
 def skip_tags_intersection?(json_metadata)
@@ -364,9 +415,22 @@ def skip?(comment, voters)
   false
 end
 
-def vote(comment, wait_offset = 0)
-  votes_cast = 0
-  backoff = 0.2
+def vote_weight(transfer)
+  return @voting_rules.vote_weight unless @voting_rules.vote_weight == 'dynamic'
+  
+  bot = transfer.to
+  amount, asset = transfer.amount.split(' ')
+  amount = amount.to_f
+  max = max_transfer(bot, asset)
+  
+  if amount >= max
+    10000 # full vote
+  else
+    ((amount / max) * 10000).to_i
+  end
+end
+
+def async_vote(comment, wait_offset, transfer)
   slug = "@#{comment.author}/#{comment.permlink}"
   
   @threads.each do |k, t|
@@ -386,113 +450,122 @@ def vote(comment, wait_offset = 0)
   end
   
   @threads[slug] = Thread.new do
-    voters = @voters.keys - comment.active_votes.map(&:voter) - voters_recharging
+    vote(comment, wait_offset, transfer)
+  end
+end
+
+def vote(comment, wait_offset, transfer)
+  votes_cast = 0
+  backoff = 0.2
+  slug = "@#{comment.author}/#{comment.permlink}"
+  voters = active_voters - comment.active_votes.map(&:voter) - voters_recharging
+
+  return if skip?(comment, voters)
+
+  if wait_offset == 0
+    timestamp = Time.parse(comment.created + ' Z')
+    now = Time.now.utc
+    wait_offset = now - timestamp
+  end
+
+  if (wait = (Random.rand(*@voting_rules.wait_range) * 60) - wait_offset) > 0
+    puts "Waiting #{wait.to_i} seconds to vote for:\n\t#{slug}"
+    sleep wait
+    
+    response = @api.get_content(comment.author, comment.permlink)
+    comment = response.result
     
     return if skip?(comment, voters)
-    
-    if wait_offset == 0
-      timestamp = Time.parse(comment.created + ' Z')
-      now = Time.now.utc
-      wait_offset = now - timestamp
-    end
-    
-    if (wait = (Random.rand(*@voting_rules.wait_range) * 60) - wait_offset) > 0
-      puts "Waiting #{wait.to_i} seconds to vote for:\n\t#{slug}"
-      sleep wait
+  else
+    puts "Catching up to vote for:\n\t#{slug}"
+    sleep 3
+  end
+
+  loop do
+    begin
+      break if voters.empty?
       
-      response = @api.get_content(comment.author, comment.permlink)
-      comment = response.result
+      author = comment.author
+      permlink = comment.permlink
+      voter = voters.sample
+      weight = vote_weight(transfer)
       
-      return if skip?(comment, voters)
-    else
-      puts "Catching up to vote for:\n\t#{slug}"
-      sleep 3
-    end
-    
-    loop do
-      begin
-        break if voters.empty?
+      break if weight == 0.0
+      
+      if (vp = @voting_power[voter].to_i) < @voting_rules.min_voting_power
+        vp = vp / 100.0
         
-        author = comment.author
-        permlink = comment.permlink
-        voter = voters.sample
-        weight = @voting_rules.vote_weight
-        
-        break if weight == 0.0
-        
-        if (vp = @voting_power[voter].to_i) < @voting_rules.min_voting_power
-          vp = vp / 100.0
-          
-          if @voters.size > 1
-            puts "Recharging #{voter} vote power (currently too low: #{('%.3f' % vp)} %)"
-          else
-            puts "Recharging vote power (currently too low: #{('%.3f' % vp)} %)"
-          end
-        end
-                
-        wif = @voters[voter]
-        tx = Radiator::Transaction.new(@options.dup.merge(wif: wif))
-        
-        puts "#{voter} voting for #{slug}"
-        
-        vote = {
-          type: :vote,
-          voter: voter,
-          author: author,
-          permlink: permlink,
-          weight: weight
-        }
-        
-        tx.operations << vote
-        response = tx.process(true)
-        
-        if !!response.error
-          message = response.error.message
-          if message.to_s =~ /You have already voted in a similar way./
-            puts "\tFailed: duplicate vote."
-            voters -= [voter]
-            next
-          elsif message.to_s =~ /Can only vote once every 3 seconds./
-            puts "\tRetrying: voting too quickly."
-            sleep 3
-            next
-          elsif message.to_s =~ /Voting weight is too small, please accumulate more voting power or steem power./
-            puts "\tFailed: voting weight too small"
-            voters -= [voter]
-            next
-          elsif message.to_s =~ /tx_missing_posting_auth: missing required posting authority/
-            puts "\tFailed: missing required posting authority (#{voter})"
-            voters -= [voter]
-            next
-          elsif message.to_s =~ /STEEMIT_UPVOTE_LOCKOUT_HF17/
-            puts "\tFailed: upvote lockout (last twelve hours before payout)"
-            break
-          elsif message.to_s =~ /tapos_block_summary/
-            puts "Retrying: tapos_block_summary (?)"
-            redo
-          elsif message.to_s =~ /now < trx.expiration/
-            puts "Retrying: now < trx.expiration (?)"
-            redo
-          elsif message.to_s =~ /signature is not canonical/
-            puts "\tRetrying: signature was not canonical (bug in Radiator?)"
-            redo
-          end
-          raise message
+        if @voters.size > 1
+          puts "Recharging #{voter} vote power (currently too low: #{('%.3f' % vp)} %)"
         else
-          voters -= [voter]
+          puts "Recharging vote power (currently too low: #{('%.3f' % vp)} %)"
         end
-        
-        puts "\tSuccess: #{response.result.to_json}"
-        @voted_for_authors[author] = Time.now.utc
-        votes_cast += 1
-        
-        next
-      rescue => e
-        puts "Pausing #{backoff} :: Unable to vote with #{voter}.  #{e}"
-        voters -= [voter]
-        sleep backoff
-        backoff = [backoff * 2, MAX_BACKOFF].min
       end
+              
+      wif = @voters[voter]
+      tx = Radiator::Transaction.new(@options.dup.merge(wif: wif))
+      
+      puts "#{voter} voting for #{slug} (transferred #{transfer.amount} to get #{(weight / 100.0)} % upvote)"
+      
+      vote = {
+        type: :vote,
+        voter: voter,
+        author: author,
+        permlink: permlink,
+        weight: weight
+      }
+      
+      tx.operations << vote
+      response = tx.process(true)
+      
+      if !!response.error
+        message = response.error.message
+        if message.to_s =~ /You have already voted in a similar way./
+          puts "\tFailed: duplicate vote."
+          voters -= [voter]
+          next
+        elsif message.to_s =~ /Can only vote once every 3 seconds./
+          puts "\tRetrying: voting too quickly."
+          sleep 3
+          next
+        elsif message.to_s =~ /Voting weight is too small, please accumulate more voting power or steem power./
+          puts "\tFailed: voting weight too small"
+          voters -= [voter]
+          next
+        elsif message.to_s =~ /tx_missing_posting_auth: missing required posting authority/
+          puts "\tFailed: missing required posting authority (#{voter})"
+          @voters_disabled[voter => 'missing required posting authority']
+          voters -= [voter]
+          next
+        elsif message.to_s =~ /STEEMIT_UPVOTE_LOCKOUT_HF17/
+          puts "\tFailed: upvote lockout (last twelve hours before payout)"
+          break
+        elsif message.to_s =~ /tapos_block_summary/
+          puts "Retrying: tapos_block_summary (?)"
+          redo
+        elsif message.to_s =~ /now < trx.expiration/
+          puts "Retrying: now < trx.expiration (?)"
+          redo
+        elsif message.to_s =~ /signature is not canonical/
+          puts "\tRetrying: signature was not canonical (bug in Radiator?)"
+          redo
+        end
+        raise message
+      else
+        voters -= [voter]
+      end
+      
+      puts "\tSuccess: #{response.result.to_json}"
+      @voted_for_authors[author] = Time.now.utc
+      votes_cast += 1
+      
+      next
+    rescue => e
+      puts "Pausing #{backoff} :: Unable to vote with #{voter}.  #{e.class} :: #{e}"
+      @voters_disabled[voter] = 'bad wif' if e.inspect =~ /Invalid version/i
+      voters -= [voter]
+      sleep backoff
+      backoff = [backoff * 2, MAX_BACKOFF].min
     end
   end
 end
@@ -532,7 +605,7 @@ if replay > 0
             comment = @api.get_content(author, permlink).result
             
             if may_vote?(comment)
-              vote(comment, elapsed.to_i)
+              async_vote(comment, elapsed.to_i, op)
             end
           end
         end
@@ -565,9 +638,13 @@ loop do
         vp = @max_voting_power / 100.0
         
         puts "Recharging vote power (currently too low: #{('%.3f' % vp)} %)"
+        if @voters_disabled.any?
+          puts "Disabled voters:"
+          ap @voters_disabled
+        end
       end
       
-      vote(comment)
+      async_vote(comment, 0, transfer)
       puts summary_voting_power
     end
   rescue => e

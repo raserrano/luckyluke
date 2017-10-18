@@ -195,6 +195,10 @@ def summary_voting_power
   vp = @voting_rules.min_voting_power / 100.0
   summary << "recharging when below: #{('%.3f' % vp)} %"
   
+  if @voting_rules.reserve_voting_power > 0
+    summary << "reserve voting power: #{'%.3f' % (@voting_rules.reserve_voting_power / 100.0)} %"
+  end
+  
   summary.join('; ')
 end
 
@@ -541,7 +545,7 @@ def vote(comment, wait_offset, transfer)
           next
         elsif message.to_s =~ /tx_missing_posting_auth: missing required posting authority/
           puts "\tFailed: missing required posting authority (#{voter})"
-          @voters_disabled[voter => 'missing required posting authority']
+          @voters_disabled[voter] = 'missing required posting authority'
           voters -= [voter]
           next
         elsif message.to_s =~ /STEEMIT_UPVOTE_LOCKOUT_HF17/

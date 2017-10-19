@@ -21,6 +21,7 @@ VOTE_RECHARGE_PER_MINUTE = VOTE_RECHARGE_PER_HOUR / 60
 VOTE_RECHARGE_PER_SEC = VOTE_RECHARGE_PER_MINUTE / 60
 
 @config_path = __FILE__.sub(/\.rb$/, '.yml')
+@disable_voter_path = __FILE__.sub(/\.rb$/, '-disabled-voters.txt')
 @account_history = {}
 
 unless File.exist? @config_path
@@ -146,7 +147,18 @@ def to_rep(raw)
 end
 
 def active_voters
-  @voters.keys - @voters_disabled.keys
+  disable_voters = if File.exist? @disable_voter_path
+    disable_voter_h = File.open(@disable_voter_path)
+    disable_voter_h.readlines
+  else
+    []
+  end
+  
+  disable_voters.map do |v|
+    v.split(' ').first
+  end
+  
+  @voters.keys - disable_voters
 end
 
 def poll_voting_power
@@ -545,7 +557,7 @@ def vote(comment, wait_offset, transfer)
           next
         elsif message.to_s =~ /tx_missing_posting_auth: missing required posting authority/
           puts "\tFailed: missing required posting authority (#{voter})"
-          @voters_disabled[voter] = 'missing required posting authority'
+          disable_voter voter, 'missing required posting authority'
           voters -= [voter]
           next
         elsif message.to_s =~ /STEEMIT_UPVOTE_LOCKOUT_HF17/
@@ -573,7 +585,7 @@ def vote(comment, wait_offset, transfer)
       next
     rescue => e
       puts "Pausing #{backoff} :: Unable to vote with #{voter}.  #{e.class} :: #{e}"
-      @voters_disabled[voter] = 'bad wif' if e.inspect =~ /Invalid version/i
+      disable_voter voter, 'bad wif' if e.inspect =~ /Invalid version/i
       voters -= [voter]
       sleep backoff
       backoff = [backoff * 2, MAX_BACKOFF].min
@@ -581,7 +593,15 @@ def vote(comment, wait_offset, transfer)
   end
 end
 
-puts "Accounts voting: #{@voters.size}"
+def disable_voter(voter, reason)
+  @voters_disabled[voter] = reason
+  
+  File.open(@disable_voter_path, 'w+') do |f|
+    f << "#{voter} # #{reason}\n"
+  end
+end
+
+puts "Accounts voting: #{active_voters.size}"
 replay = 0
   
 ARGV.each do |arg|

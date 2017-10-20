@@ -21,7 +21,7 @@ VOTE_RECHARGE_PER_MINUTE = VOTE_RECHARGE_PER_HOUR / 60
 VOTE_RECHARGE_PER_SEC = VOTE_RECHARGE_PER_MINUTE / 60
 
 @config_path = __FILE__.sub(/\.rb$/, '.yml')
-@disable_voter_path = __FILE__.sub(/\.rb$/, '-disabled-voters.txt')
+@disabled_voter_path = __FILE__.sub(/\.rb$/, '-disabled-voters.txt')
 @account_history = {}
 
 unless File.exist? @config_path
@@ -125,7 +125,6 @@ end
 @only_apps = parse_list(@config[:only_apps])
 @flag_signals = parse_list(@config[:flag_signals])
 @vote_signals = parse_list(@config[:vote_signals])
-@voters_disabled = {}
 
 @options = @config[:chain_options]
 @options[:logger] = Logger.new(__FILE__.sub(/\.rb$/, '.log'))
@@ -146,44 +145,52 @@ def to_rep(raw)
   level
 end
 
+def disabled_voters
+  disabled_voters = []
+  
+  if File.exist? @disabled_voter_path
+    File.readlines(@disabled_voter_path).each do |line|
+      disabled_voters << line.split(' ').first
+    end
+  end
+  
+  disabled_voters
+end
+
 def active_voters
-  disable_voters = if File.exist? @disable_voter_path
-    disable_voter_h = File.open(@disable_voter_path)
-    disable_voter_h.readlines
-  else
-    []
-  end
-  
-  disable_voters.map do |v|
-    v.split(' ').first
-  end
-  
-  @voters.keys - disable_voters
+  @voters.keys - disabled_voters
 end
 
 def poll_voting_power
   @semaphore.synchronize do
-    response = @api.get_accounts(active_voters)
-    accounts = response.result
-    
-    accounts.each do |account|
-      voting_power = account.voting_power / 100.0
-      last_vote_time = Time.parse(account.last_vote_time + 'Z')
-      voting_elapse = Time.now.utc - last_vote_time
-      current_voting_power = voting_power + (voting_elapse * VOTE_RECHARGE_PER_SEC)
-      wasted_voting_power = [current_voting_power - 100.0, 0.0].max
-      current_voting_power = ([100.0, current_voting_power].min * 100).to_i
-      
-      if wasted_voting_power > 0
-        puts "\t#{account.name} wasted voting power: #{('%.2f' % wasted_voting_power)} %"
+    @api.get_accounts(active_voters) do |accounts|
+      if accounts.size == 0
+        @min_voting_power = 0
+        @max_voting_power = 0
+        @average_voting_power = 0
+        
+        return 0
+      end
+        
+      accounts.each do |account|
+        voting_power = account.voting_power / 100.0
+        last_vote_time = Time.parse(account.last_vote_time + 'Z')
+        voting_elapse = Time.now.utc - last_vote_time
+        current_voting_power = voting_power + (voting_elapse * VOTE_RECHARGE_PER_SEC)
+        wasted_voting_power = [current_voting_power - 100.0, 0.0].max
+        current_voting_power = ([100.0, current_voting_power].min * 100).to_i
+        
+        if wasted_voting_power > 0
+          puts "\t#{account.name} wasted voting power: #{('%.2f' % wasted_voting_power)} %"
+        end
+        
+        @voting_power[account.name] = current_voting_power
       end
       
-      @voting_power[account.name] = current_voting_power
+      @min_voting_power = @voting_power.values.min
+      @max_voting_power = @voting_power.values.max
+      @average_voting_power = @voting_power.values.reduce(0, :+) / accounts.size
     end
-    
-    @min_voting_power = @voting_power.values.min
-    @max_voting_power = @voting_power.values.max
-    @average_voting_power = @voting_power.values.reduce(0, :+) / accounts.size
   end
 end
 
@@ -284,8 +291,8 @@ def max_transfer(bot, asset)
 end
 
 def skip_tags_intersection?(json_metadata)
-  metadata = JSON[json_metadata || '{}']
-  tags = metadata['tags'] || [] rescue []
+  metadata = JSON[json_metadata || '{}'] rescue []
+  tags = metadata['tags'] || []
   tags = [tags].flatten
   
   (@skip_tags & tags).any?
@@ -294,15 +301,15 @@ end
 def only_tags_intersection?(json_metadata)
   return true if @only_tags.none? # not set, assume all tags intersect
   
-  metadata = JSON[json_metadata || '{}']
-  tags = metadata['tags'] || [] rescue []
+  metadata = JSON[json_metadata || '{}'] rescue []
+  tags = metadata['tags'] || []
   tags = [tags].flatten
   
   (@only_tags & tags).any?
 end
 
 def skip_app?(json_metadata)
-  metadata = JSON[json_metadata || '{}']
+  metadata = JSON[json_metadata || '{}'] rescue []
   app = metadata['app'].to_s.split('/').first
   
   @skip_apps.include? app
@@ -311,7 +318,7 @@ end
 def only_app?(json_metadata)
   return true if @only_apps.none?
   
-  metadata = JSON[json_metadata || '{}']
+  metadata = JSON[json_metadata || '{}'] rescue []
   app = metadata['app'].to_s.split('/').first
   
   @only_apps.include? app
@@ -402,7 +409,7 @@ def skip?(comment, voters)
     return true
   end
   
-  if voters.empty?
+  if active_voters.empty?
     puts "Skipped, everyone already voted:\n\t@#{comment.author}/#{comment.permlink}"
     return true
   end
@@ -518,7 +525,7 @@ def vote(comment, wait_offset, transfer)
       if (vp = @voting_power[voter].to_i) < @voting_rules.min_voting_power
         vp = vp / 100.0
         
-        if @voters.size > 1
+        if active_voters.size > 1
           puts "Recharging #{voter} vote power (currently too low: #{('%.3f' % vp)} %)"
         else
           puts "Recharging vote power (currently too low: #{('%.3f' % vp)} %)"
@@ -564,10 +571,13 @@ def vote(comment, wait_offset, transfer)
           puts "\tFailed: upvote lockout (last twelve hours before payout)"
           break
         elsif message.to_s =~ /tapos_block_summary/
-          puts "Retrying: tapos_block_summary (?)"
+          puts "\tRetrying: tapos_block_summary (?)"
           redo
         elsif message.to_s =~ /now < trx.expiration/
-          puts "Retrying: now < trx.expiration (?)"
+          puts "\tRetrying: now < trx.expiration (?)"
+          redo
+        elsif message.to_s =~ /transaction_expiration_exception: transaction expiration exception/
+          puts "\ttransaction_expiration_exception: transaction expiration exception"
           redo
         elsif message.to_s =~ /signature is not canonical/
           puts "\tRetrying: signature was not canonical (bug in Radiator?)"
@@ -594,10 +604,10 @@ def vote(comment, wait_offset, transfer)
 end
 
 def disable_voter(voter, reason)
-  @voters_disabled[voter] = reason
+  return if disabled_voters.include? voter
   
-  File.open(@disable_voter_path, 'w+') do |f|
-    f << "#{voter} # #{reason}\n"
+  File.open(@disabled_voter_path, 'a+') do |f|
+    f.puts "#{voter} # #{reason}"
   end
 end
 
@@ -669,9 +679,8 @@ loop do
         vp = @max_voting_power / 100.0
         
         puts "Recharging vote power (currently too low: #{('%.3f' % vp)} %)"
-        if @voters_disabled.any?
-          puts "Disabled voters:"
-          ap @voters_disabled
+        if disabled_voters.any?
+          puts "Disabled voters: #{disabled_voters.size}"
         end
       end
       

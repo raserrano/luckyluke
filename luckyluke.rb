@@ -34,10 +34,10 @@ def parse_voters(voters)
   when String
     raise "Not found: #{voters}" unless File.exist? voters
     
-    f = File.open(voters)
     hash = {}
-    f.read.each_line do |pair|
-      key, value = pair.split(' ')
+    
+    File.open(voters, 'r').each do |line|
+      key, value = line.split(' ')
       hash[key] = value if !!key && !!hash
     end
     
@@ -61,10 +61,9 @@ end
 
 def parse_list(list)
   if !!list && File.exist?(list)
-    f = File.open(list)
     elements = []
     
-    f.each_line do |line|
+    File.open(list, 'r').each do |line|
       elements += line.split(' ')
     end
     
@@ -149,7 +148,10 @@ def disabled_voters
   disabled_voters = []
   
   if File.exist? @disabled_voter_path
-    File.readlines(@disabled_voter_path).each do |line|
+    @disabled_voters_h ||= File.open(@disabled_voter_path, 'r')
+    
+    @disabled_voters_h.rewind
+    @disabled_voters_h.each do |line|
       disabled_voters << line.split(' ').first
     end
   end
@@ -292,7 +294,7 @@ end
 
 def skip_tags_intersection?(json_metadata)
   metadata = JSON[json_metadata || '{}'] rescue []
-  tags = metadata['tags'] || []
+  tags = metadata['tags'] || [] rescue []
   tags = [tags].flatten
   
   (@skip_tags & tags).any?
@@ -302,14 +304,14 @@ def only_tags_intersection?(json_metadata)
   return true if @only_tags.none? # not set, assume all tags intersect
   
   metadata = JSON[json_metadata || '{}'] rescue []
-  tags = metadata['tags'] || []
+  tags = metadata['tags'] || [] rescue []
   tags = [tags].flatten
   
   (@only_tags & tags).any?
 end
 
 def skip_app?(json_metadata)
-  metadata = JSON[json_metadata || '{}'] rescue []
+  metadata = JSON[json_metadata || '{}'] rescue ''
   app = metadata['app'].to_s.split('/').first
   
   @skip_apps.include? app
@@ -318,7 +320,7 @@ end
 def only_app?(json_metadata)
   return true if @only_apps.none?
   
-  metadata = JSON[json_metadata || '{}'] rescue []
+  metadata = JSON[json_metadata || '{}'] rescue ''
   app = metadata['app'].to_s.split('/').first
   
   @only_apps.include? app
@@ -577,12 +579,14 @@ def vote(comment, wait_offset, transfer)
           puts "\tRetrying: now < trx.expiration (?)"
           redo
         elsif message.to_s =~ /transaction_expiration_exception: transaction expiration exception/
-          puts "\ttransaction_expiration_exception: transaction expiration exception"
+          puts "\tRetrying: transaction_expiration_exception: transaction expiration exception"
           redo
         elsif message.to_s =~ /signature is not canonical/
           puts "\tRetrying: signature was not canonical (bug in Radiator?)"
           redo
         end
+        
+        ap response
         raise message
       else
         voters -= [voter]
@@ -689,6 +693,8 @@ loop do
     end
   rescue => e
     @api.shutdown
+    @follow_api.shutdown
+    @shutdown.shutdown
     puts "Unable to stream on current node.  Retrying in 5 seconds.  Error: #{e}"
     puts e.backtrace
     sleep 5

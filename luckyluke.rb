@@ -80,8 +80,11 @@ def parse_slug(slug)
   author_name = slug.split('/')[0]
   permlink = slug.split('/')[1..-1].join('/')
   permlink = permlink.split('?')[0]
-  permlink = permlink.sub(/\/$/, '')
-  permlink = permlink.sub(/#comments$/, '')
+  
+  unless permlink.nil?
+    permlink = permlink.sub(/\/$/, '')
+    permlink = permlink.sub(/#comments$/, '')
+  end
   
   [author_name, permlink]
 end

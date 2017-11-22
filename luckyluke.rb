@@ -1,6 +1,6 @@
 # Lucky Luke (luckyluke) watches transfers sent to pay-for-vote bots and tries
 # to vote for the content first (front-running).
-# 
+#
 # See: https://steemit.com/radiator/@inertia/luckyluke-rb-voting-bot
 
 require 'rubygems'
@@ -33,27 +33,27 @@ def parse_voters(voters)
   case voters
   when String
     raise "Not found: #{voters}" unless File.exist? voters
-    
+
     hash = {}
-    
+
     File.open(voters, 'r').each do |line|
       key, value = line.split(' ')
       hash[key] = value if !!key && !!hash
     end
-    
+
     hash
   when Array
     a = voters.map{ |v| v.split(' ')}.flatten.each_slice(2)
-    
+
     return a.to_h if a.respond_to? :to_h
-    
+
     hash = {}
-      
+
     voters.each_with_index do |e|
       key, val = e.split(' ')
       hash[key] = val
     end
-    
+
     hash
   else; raise "Unsupported voters: #{voters}"
   end
@@ -62,11 +62,11 @@ end
 def parse_list(list)
   if !!list && File.exist?(list)
     elements = []
-    
+
     File.open(list, 'r').each do |line|
       elements += line.split(' ')
     end
-    
+
     elements.uniq.reject(&:empty?).reject(&:nil?)
   else
     list.to_s.split(' ')
@@ -75,10 +75,14 @@ end
 
 def parse_slug(slug)
   slug = slug.downcase.split('@').last
+  return [] if slug.nil?
+  
   author_name = slug.split('/')[0]
   permlink = slug.split('/')[1..-1].join('/')
   permlink = permlink.split('?')[0]
-    
+  permlink = permlink.sub(/\/$/, '')
+  permlink = permlink.sub(/#comments$/, '')
+  
   [author_name, permlink]
 end
 
@@ -130,7 +134,10 @@ end
 
 @voted_for_authors = {}
 @voting_power = {}
-@threads = {}
+@api = nil
+@follow_api = nil
+@stream = nil
+@threads = nil
 @semaphore = Mutex.new
 
 def to_rep(raw)
@@ -146,16 +153,16 @@ end
 
 def disabled_voters
   disabled_voters = []
-  
+
   if File.exist? @disabled_voter_path
     @disabled_voters_h ||= File.open(@disabled_voter_path, 'r')
-    
+
     @disabled_voters_h.rewind
     @disabled_voters_h.each do |line|
       disabled_voters << line.split(' ').first
     end
   end
-  
+
   disabled_voters
 end
 
@@ -170,10 +177,10 @@ def poll_voting_power
         @min_voting_power = 0
         @max_voting_power = 0
         @average_voting_power = 0
-        
+
         return 0
       end
-        
+
       accounts.each do |account|
         voting_power = account.voting_power / 100.0
         last_vote_time = Time.parse(account.last_vote_time + 'Z')
@@ -181,14 +188,14 @@ def poll_voting_power
         current_voting_power = voting_power + (voting_elapse * VOTE_RECHARGE_PER_SEC)
         wasted_voting_power = [current_voting_power - 100.0, 0.0].max
         current_voting_power = ([100.0, current_voting_power].min * 100).to_i
-        
+
         if wasted_voting_power > 0
           puts "\t#{account.name} wasted voting power: #{('%.2f' % wasted_voting_power)} %"
         end
-        
+
         @voting_power[account.name] = current_voting_power
       end
-      
+
       @min_voting_power = @voting_power.values.min
       @max_voting_power = @voting_power.values.max
       @average_voting_power = @voting_power.values.reduce(0, :+) / accounts.size
@@ -200,26 +207,26 @@ def summary_voting_power
   poll_voting_power
   vp = @average_voting_power / 100.0
   summary = []
-  
+
   summary << if @voting_power.size > 1
     "Average remaining voting power: #{('%.3f' % vp)} %"
   else
     "Remaining voting power: #{('%.3f' % vp)} %"
   end
-  
+
   if @voting_power.size > 1 && @max_voting_power > @voting_rules.min_voting_power
     vp = @max_voting_power / 100.0
-      
+
     summary << "highest account: #{('%.3f' % vp)} %"
   end
-    
+
   vp = @voting_rules.min_voting_power / 100.0
   summary << "recharging when below: #{('%.3f' % vp)} %"
-  
+
   if @voting_rules.reserve_voting_power > 0
     summary << "reserve voting power: #{'%.3f' % (@voting_rules.reserve_voting_power / 100.0)} %"
   end
-  
+
   summary.join('; ')
 end
 
@@ -229,7 +236,7 @@ def voters_recharging(weight)
   else
     @voting_rules.min_voting_power - @voting_rules.reserve_voting_power
   end
-  
+
   @voting_power.map do |voter, power|
     voter if power < target_voting_power
   end.compact
@@ -238,7 +245,7 @@ end
 def account_history(bot)
   @account_history[bot] = nil if rand < 0.05
   limit = @voting_rules.history_limit
-  
+
   if @account_history[bot].nil?
     args = [bot, -limit, limit]
     @account_history[bot] = @api.get_account_history(*args) do |history, error|
@@ -251,11 +258,11 @@ def account_history(bot)
       @account_history[bot] += @api.get_account_history(*args) do |history, error|
         history unless !!error
       end
-      
+
       @account_history[bot] = @account_history[bot].uniq
     end
   end
-  
+
   @account_history[bot]
 end
 
@@ -265,13 +272,13 @@ def average_transfer(bot, asset)
     next unless type == 'transfer'
     next unless op.to == bot
     next unless op.amount =~ /#{asset}$/
-    
+
     op.amount.split(' ').first.to_f
   end.compact
-  
+
   sum = inputs.reduce(0, :+)
   return true if sum == 0.0
-  
+
   sum / inputs.size
 end
 
@@ -285,10 +292,10 @@ def max_transfer(bot, asset)
     next unless type == 'transfer'
     next unless op.to == bot
     next unless op.amount =~ /#{asset}$/
-    
+
     op.amount.split(' ').first.to_f
   end.compact
-  
+
   inputs.max || 0.0
 end
 
@@ -296,54 +303,54 @@ def skip_tags_intersection?(json_metadata)
   metadata = JSON[json_metadata || '{}'] rescue []
   tags = metadata['tags'] || [] rescue []
   tags = [tags].flatten
-  
+
   (@skip_tags & tags).any?
 end
 
 def only_tags_intersection?(json_metadata)
   return true if @only_tags.none? # not set, assume all tags intersect
-  
+
   metadata = JSON[json_metadata || '{}'] rescue []
   tags = metadata['tags'] || [] rescue []
   tags = [tags].flatten
-  
+
   (@only_tags & tags).any?
 end
 
 def skip_app?(json_metadata)
   metadata = JSON[json_metadata || '{}'] rescue ''
   app = metadata['app'].to_s.split('/').first
-  
+
   @skip_apps.include? app
 end
 
 def only_app?(json_metadata)
   return true if @only_apps.none?
-  
+
   metadata = JSON[json_metadata || '{}'] rescue ''
   app = metadata['app'].to_s.split('/').first
-  
+
   @only_apps.include? app
 end
 
 def valid_transfer?(transfer)
   to = transfer.to
   amount = transfer.amount.split(' ').first.to_f
-  asset = transfer.amount.split(' ').last 
-  
+  asset = transfer.amount.split(' ').last
+
   return false unless @bots.include? to
   return false if @voting_rules.only_above_average_transfers && !above_average_transfer?(to, amount, asset)
-  
+
   if !@voting_rules.min_transfer.nil?
     return false unless asset == @voting_rules.min_transfer_asset
     return false unless amount >= @voting_rules.min_transfer_amount
   end
-  
+
   if !@voting_rules.max_transfer.nil?
     return false unless asset == @voting_rules.max_transfer_asset
     return false unless amount <= @voting_rules.max_transfer_amount
   end
-  
+
   true
 end
 
@@ -352,7 +359,7 @@ end
 # comment should be skipped.
 def bots_already_voted?(comment)
   all_voters = comment.active_votes.map(&:voter)
-  
+
   (all_voters & @bots).any?
 end
 
@@ -365,7 +372,7 @@ def may_vote?(comment)
   return false if skip_app? comment.json_metadata
   return false unless only_app? comment.json_metadata
   return false if bots_already_voted?(comment)
-  
+
   true
 end
 
@@ -374,15 +381,15 @@ def min_trending_rep(limit)
     @semaphore.synchronize do
       if @min_trending_rep.nil? || Random.rand(0..limit) == 13
         puts "Looking up trending up to #{limit} transfers."
-        
+
         response = @api.get_discussions_by_trending(tag: '', limit: limit)
         raise response.error.message if !!response.error
-        
+
         trending = response.result
         @min_trending_rep = trending.map do |c|
           c.author_reputation.to_i
         end.min
-        
+
         puts "Current minimum dynamic rep: #{('%.3f' % to_rep(@min_trending_rep))}"
       end
     end
@@ -398,68 +405,68 @@ def skip?(comment, voters)
     puts "Skipped, cannot front-run:\n\t@#{comment.author}/#{comment.permlink}"
     return true
   end
-  
+
   if comment.respond_to? :cashout_time # HF18
     if (cashout_time = Time.parse(comment.cashout_time + 'Z')) < Time.now.utc
       puts "Skipped, cashout time has passed (#{cashout_time}):\n\t@#{comment.author}/#{comment.permlink}"
       return true
     end
   end
-  
+
   if ((Time.now.utc - (created = Time.parse(comment.created + 'Z'))).to_i / 60) > @voting_rules.max_age
     puts "Skipped, too old (#{created}):\n\t@#{comment.author}/#{comment.permlink}"
     return true
   end
-  
+
   if comment.max_accepted_payout.split(' ').first == '0.000'
     puts "Skipped, payout declined:\n\t@#{comment.author}/#{comment.permlink}"
     return true
   end
-  
+
   if active_voters.empty?
     puts "Skipped, everyone already voted:\n\t@#{comment.author}/#{comment.permlink}"
     return true
   end
-  
+
   downvoters = comment.active_votes.map do |v|
     v.voter if v.percent < 0
   end.compact
-  
+
   if (signal = downvoters & @flag_signals).any?
     # ... Got a signal flag ...
     puts "Skipped, flag signals (#{signals.join(' ')} flagged):\n\t@#{comment.author}/#{comment.permlink}"
     return true
   end
-  
+
   upvoters = comment.active_votes.map do |v|
     v.voter if v.percent > 0
   end.compact
-  
+
   if (signals = upvoters & @vote_signals).any?
     # ... Got a signal vote ...
     puts "Skipped, vote signals (#{signals.join(' ')} voted):\n\t@#{comment.author}/#{comment.permlink}"
     return true
   end
-  
+
   all_voters = comment.active_votes.map(&:voter)
-  
+
   if (all_voters & voters).any?
     # ... Someone already voted (probably because post was edited) ...
     puts "Skipped, already voted:\n\t@#{comment.author}/#{comment.permlink}"
     return true
   end
-  
+
   false
 end
 
 def vote_weight(transfer)
   return @voting_rules.vote_weight unless @voting_rules.vote_weight == 'dynamic'
-  
+
   bot = transfer.to
   amount, asset = transfer.amount.split(' ')
   amount = amount.to_f
   max = max_transfer(bot, asset)
-  
+
   if amount >= max
     10000 # full vote
   else
@@ -469,23 +476,23 @@ end
 
 def async_vote(comment, wait_offset, transfer)
   slug = "@#{comment.author}/#{comment.permlink}"
-  
+
   @threads.each do |k, t|
     @threads.delete(k) unless t.alive?
   end
-  
+
   @semaphore.synchronize do
     if @threads.size != @last_threads_size
       print "Pending votes: #{@threads.size} ... "
       @last_threads_size = @threads.size
     end
   end
-  
+
   if @threads.keys.include? slug
     puts "Skipped, vote already pending:\n\t#{slug}"
     return
   end
-  
+
   @threads[slug] = Thread.new do
     vote(comment, wait_offset, transfer)
   end
@@ -509,10 +516,10 @@ def vote(comment, wait_offset, transfer)
   if (wait = (Random.rand(*@voting_rules.wait_range) * 60) - wait_offset) > 0
     puts "Waiting #{wait.to_i} seconds to vote for:\n\t#{slug}"
     sleep wait
-    
+
     response = @api.get_content(comment.author, comment.permlink)
     comment = response.result
-    
+
     return if skip?(comment, voters)
   else
     puts "Catching up to vote for:\n\t#{slug}"
@@ -522,28 +529,28 @@ def vote(comment, wait_offset, transfer)
   loop do
     begin
       break if voters.empty?
-      
+
       author = comment.author
       permlink = comment.permlink
       voter = voters.sample
-      
+
       break if weight == 0.0
-      
+
       if (vp = @voting_power[voter].to_i) < @voting_rules.min_voting_power
         vp = vp / 100.0
-        
+
         if active_voters.size > 1
           puts "Recharging #{voter} vote power (currently too low: #{('%.3f' % vp)} %)"
         else
           puts "Recharging vote power (currently too low: #{('%.3f' % vp)} %)"
         end
       end
-              
+
       wif = @voters[voter]
-      tx = Radiator::Transaction.new(@options.dup.merge(wif: wif))
-      
+      tx = Radiator::Transaction.new(@options.merge(wif: wif, pool_size: 1))
+
       puts "#{voter} voting for #{slug} (transferred #{transfer.amount} to get #{(weight / 100.0)} % upvote)"
-      
+
       vote = {
         type: :vote,
         voter: voter,
@@ -551,10 +558,10 @@ def vote(comment, wait_offset, transfer)
         permlink: permlink,
         weight: weight
       }
-      
+
       tx.operations << vote
       response = tx.process(true)
-      
+
       if !!response.error
         message = response.error.message
         if message.to_s =~ /You have already voted in a similar way./
@@ -590,17 +597,17 @@ def vote(comment, wait_offset, transfer)
           puts "\tRetrying: signature was not canonical (bug in Radiator?)"
           redo
         end
-        
+
         ap response
         raise message
       else
         voters -= [voter]
       end
-      
+
       puts "\tSuccess: #{response.result.to_json}"
       @voted_for_authors[author] = Time.now.utc
       votes_cast += 1
-      
+
       next
     rescue => e
       puts "Pausing #{backoff} :: Unable to vote with #{voter}.  #{e.class} :: #{e}"
@@ -614,7 +621,7 @@ end
 
 def disable_voter(voter, reason)
   return if disabled_voters.include? voter
-  
+
   File.open(@disabled_voter_path, 'a+') do |f|
     f.puts "#{voter} # #{reason}"
   end
@@ -622,7 +629,7 @@ end
 
 puts "Accounts voting: #{active_voters.size}"
 replay = 0
-  
+
 ARGV.each do |arg|
   if arg =~ /replay:[0-9]+/
     replay = arg.split('replay:').last.to_i rescue 0
@@ -631,29 +638,31 @@ end
 
 if replay > 0
   Thread.new do
-    @api = Radiator::Api.new(@options.dup)
-    @follow_api = Radiator::FollowApi.new(@options.dup)
-    @stream = Radiator::Stream.new(@options.dup)
-    
+    @api ||= Radiator::Api.new(@options)
+    @follow_api ||= Radiator::FollowApi.new(@options)
+    @stream ||= Radiator::Stream.new(@options)
+
     properties = @api.get_dynamic_global_properties.result
     last_irreversible_block_num = properties.last_irreversible_block_num
     block_number = last_irreversible_block_num - replay
-    
+
     puts "Replaying from block number #{block_number} ..."
-    
+
     @api.get_blocks(block_number..last_irreversible_block_num) do |block, number|
       next unless !!block
-      
+
       timestamp = Time.parse(block.timestamp + ' Z')
       now = Time.now.utc
       elapsed = now - timestamp
-      
+
       block.transactions.each do |tx|
         tx.operations.each do |type, op|
           if type == 'transfer' && valid_transfer?(op)
             author, permlink = parse_slug(op.memo)
-            comment = @api.get_content(author, permlink).result
+            next if author.nil? || permlink.nil?
             
+            comment = @api.get_content(author, permlink).result
+
             if may_vote?(comment)
               async_vote(comment, elapsed.to_i, op)
             end
@@ -661,7 +670,7 @@ if replay > 0
         end
       end
     end
-    
+
     sleep 3
     puts "Done replaying."
   end
@@ -670,9 +679,10 @@ end
 puts "Now watching for new transfers to: #{@bots.join(', ')}"
 
 loop do
-  @api = Radiator::Api.new(@options.dup)
-  @follow_api = Radiator::FollowApi.new(@options.dup)
-  @stream = Radiator::Stream.new(@options.dup)
+  @api ||= Radiator::Api.new(@options)
+  @follow_api ||= Radiator::FollowApi.new(@options)
+  @stream ||= Radiator::Stream.new(@options)
+  @threads ||= {}
   op_idx = 0
   
   begin
@@ -681,27 +691,32 @@ loop do
     @stream.operations(:transfer) do |transfer|
       next unless valid_transfer? transfer
       author, permlink = parse_slug(transfer.memo)
+      next if author.nil? || permlink.nil?
       comment = @api.get_content(author, permlink).result
       next unless may_vote? comment
-      
+
       if @max_voting_power < @voting_rules.min_voting_power
         vp = @max_voting_power / 100.0
-        
+
         puts "Recharging vote power (currently too low: #{('%.3f' % vp)} %)"
         if disabled_voters.any?
           puts "Disabled voters: #{disabled_voters.size}"
         end
       end
-      
+
       async_vote(comment, 0, transfer)
       puts summary_voting_power
     end
   rescue => e
-    @api.shutdown
-    @follow_api.shutdown
-    @shutdown.shutdown
-    puts "Unable to stream on current node.  Retrying in 5 seconds.  Error: #{e}"
-    puts e.backtrace
-    sleep 5
+   @api.shutdown
+   @api = nil
+   @follow_api.shutdown
+   @follow_api = nil
+   @stream.shutdown
+   @stream = nil
+   @threads = nil
+   puts "Unable to stream on current node.  Retrying in 5 seconds.  Error: #{e}"
+   puts e.backtrace
+   sleep 5
   end
 end

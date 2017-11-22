@@ -2,7 +2,7 @@ GEM
   remote: https://rubygems.org/
   specs:
     awesome_print (1.8.0)
-    bitcoin-ruby (0.0.11)
+    bitcoin-ruby (0.0.13)
     connection_pool (2.2.1)
     ffi (1.9.18)
     hashie (3.5.6)
@@ -14,7 +14,7 @@ GEM
     multi_json (1.12.2)
     net-http-persistent (3.0.0)
       connection_pool (~> 2.2)
-    radiator (0.3.3)
+    radiator (0.3.12)
       awesome_print (~> 1.7, >= 1.7.0)
       bitcoin-ruby (~> 0.0, >= 0.0.11)
       ffi (~> 1.9, >= 1.9.18)
@@ -31,4 +31,4 @@ DEPENDENCIES
   radiator
 
 BUNDLED WITH
-   1.15.4
+   1.16.0.pre.3

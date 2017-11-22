@@ -151,9 +151,9 @@ Make sure the `.yml` file `voter` items have the account name, followed by a spa
 
 Is there a list of nodes?
 
-##### Solution: Yes, special thanks to @ripplerm.
+##### Solution: Yes, see:
 
-https://ripplerm.github.io/steem-servers/
+https://steem-third-party.github.io/steem-servers/
 
 ---
 
@@ -161,7 +161,7 @@ https://ripplerm.github.io/steem-servers/
   <img src="http://i.imgur.com/IGRR31s.png" />
 </center>
 
-See my previous Ruby How To posts in: [#radiator](https://steemit.com/created/radiator) [#ruby](https://steemit.com/created/ruby)
+See my previous Ruby How To posts in: [/f/ruby](https://chainbb.com/f/ruby)
 
 ## Get in touch!
 

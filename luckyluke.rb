@@ -97,6 +97,7 @@ rules = @config[:voting_rules]
   min_transfer: rules[:min_transfer],
   min_transfer_asset: rules[:min_transfer].to_s.split(' ').last,
   min_transfer_amount: rules[:min_transfer].to_s.split(' ').first.to_f,
+  alternative_assets: rules[:alternative_assets].to_s.split(' '),
   max_transfer: rules[:max_transfer],
   max_transfer_asset: rules[:max_transfer].to_s.split(' ').last,
   max_transfer_amount: rules[:max_transfer].to_s.split(' ').first.to_f,
@@ -336,14 +337,56 @@ def only_app?(json_metadata)
   @only_apps.include? app
 end
 
+def base_to_debt_ratio
+  @last_base_to_debt_ratio = @market_history_api.get_ticker do |ticker|
+    latest = ticker.latest.to_f
+    bid = ticker.highest_bid.to_f
+    ask = ticker.lowest_ask.to_f
+    [latest, bid, ask].reduce(0, :+) / 3.0
+  end
+rescue => e
+  puts "Unable to query market data: #{e}"
+  @market_history_api.shutdown
+  @market_history_api = Radiator::MarketHistoryApi.new(@options)
+ensure
+  @last_base_to_debt_ratio || 1.0
+end
+
+def convert_asset(amount, asset)
+  original_amount = amount
+  original_asset = asset
+  amount = amount.to_f
+  ratio = base_to_debt_ratio
+  amount = case asset
+  when 'STEEM', 'GOLOS'
+    amount * ratio
+  when 'SBD', 'GBG'
+    amount / ratio
+  else
+    puts "Unsupported asset for bid: #{asset}"
+    0.0
+  end
+        
+  asset = @voting_rules.min_transfer_asset
+  
+  puts "Evaluating bid at #{original_amount} #{original_asset} as #{amount} #{asset} (ratio: #{ratio})"
+  
+  [amount, asset]
+end
+
 def valid_transfer?(transfer)
   to = transfer.to
   amount = transfer.amount.split(' ').first.to_f
   asset = transfer.amount.split(' ').last
 
   return false unless @bots.include? to
-  return false if @voting_rules.only_above_average_transfers && !above_average_transfer?(to, amount, asset)
+  
+  if @voting_rules.alternative_assets.include? asset
+    amount, asset = convert_asset amount, asset
+  end
 
+  return false if @voting_rules.only_above_average_transfers && !above_average_transfer?(to, amount, asset)
+  
   if !@voting_rules.min_transfer.nil?
     return false unless asset == @voting_rules.min_transfer_asset
     return false unless amount >= @voting_rules.min_transfer_amount
@@ -467,7 +510,11 @@ def vote_weight(transfer)
 
   bot = transfer.to
   amount, asset = transfer.amount.split(' ')
-  amount = amount.to_f
+  amount, asset = if @voting_rules.alternative_assets.include? asset
+    convert_asset amount, asset
+  else
+    [amount.to_f, asset]
+  end
   max = max_transfer(bot, asset)
 
   if amount >= max
@@ -685,6 +732,7 @@ loop do
   @api ||= Radiator::Api.new(@options)
   @follow_api ||= Radiator::FollowApi.new(@options)
   @stream ||= Radiator::Stream.new(@options)
+  @market_history_api ||= @market_history_api = Radiator::MarketHistoryApi.new(@options)
   @threads ||= {}
   op_idx = 0
   
@@ -715,6 +763,8 @@ loop do
    @api = nil
    @follow_api.shutdown
    @follow_api = nil
+   @market_history_api.shutdown
+   @market_history_api = nil
    @stream.shutdown
    @stream = nil
    @threads = nil

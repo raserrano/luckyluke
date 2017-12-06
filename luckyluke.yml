@@ -1,6 +1,7 @@
 :voting_rules:
   :vote_weight: dynamic
   :min_transfer: 0.001 SBD
+  :alternative_assets: STEEM
   # :max_transfer: 100.000 SBD
   :only_above_average_transfers: false
   :history_limit: 1000

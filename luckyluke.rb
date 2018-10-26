@@ -6,6 +6,7 @@
 require 'rubygems'
 require 'bundler/setup'
 require 'yaml'
+require 'byebug'
 # require 'irb'
 
 Bundler.require
@@ -109,6 +110,10 @@ rules = @config[:voting_rules]
   min_voting_power: (((rules[:min_voting_power] || '0.0 %').to_f) * 100).to_i,
   reserve_voting_power: (((rules[:reserve_voting_power] || '0.0 %').to_f) * 100).to_i,
   max_age: rules[:max_age].to_i,
+  min_age: rules[:min_age].to_i,
+  max_payout: rules[:max_payout],
+  max_payout_asset: rules[:max_payout].to_s.split(' ').last,
+  max_payout_amount: rules[:max_payout].to_s.split(' ').first.to_f,
 }
 
 unless @voting_rules[:vote_weight] == 'dynamic'
@@ -447,6 +452,7 @@ def min_trending_rep(limit)
 end
 
 def skip?(comment, voters)
+  byebug
   if bots_already_voted?(comment)
     puts "Skipped, cannot front-run:\n\t@#{comment.author}/#{comment.permlink}"
     return true
@@ -461,6 +467,11 @@ def skip?(comment, voters)
 
   if ((Time.now.utc - (created = Time.parse(comment.created + 'Z'))).to_i / 60) > @voting_rules.max_age
     puts "Skipped, too old (#{created}):\n\t@#{comment.author}/#{comment.permlink}"
+    return true
+  end
+
+  if ((Time.now.utc - (created = Time.parse(comment.created + 'Z'))).to_i / 60) < @voting_rules.min_age
+    puts "Skipped, too new (#{created}):\n\t@#{comment.author}/#{comment.permlink}"
     return true
   end
 
@@ -499,6 +510,11 @@ def skip?(comment, voters)
   if (all_voters & voters).any?
     # ... Someone already voted (probably because post was edited) ...
     puts "Skipped, already voted:\n\t@#{comment.author}/#{comment.permlink}"
+    return true
+  end
+
+  if (comment.pending_payout_value.split(' ').first.to_f > @voting_rules.max_payout_amount)
+    puts "Skipped, pending payout too much:\n\t@#{comment.author}/#{comment.permlink}"
     return true
   end
 

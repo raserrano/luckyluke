@@ -1,24 +1,28 @@
 :voting_rules:
   :vote_weight: dynamic
-  :min_transfer: 0.001 SBD
+  :min_transfer: 15.000 SBD
   :alternative_assets: STEEM
   # :max_transfer: 100.000 SBD
   :only_above_average_transfers: false
   :history_limit: 1000
-  :enable_comments: false
-  :min_wait: 18
+  :enable_comments: true
+  :min_wait: 16
   :max_wait: 30
   :min_rep: 25.0
   :max_rep: 99.9
-  :min_voting_power: 25.00 %
+  :min_voting_power: 90.00 %
   :reserve_voting_power: 2.00 %
   :max_age: 7200
+  :max_age: 15
+  :max_payout: 5.000 SBD
   
 :voters:
-  - social 5JrvPrQeBBvCRdjv29iDvkwn3EQYZ9jqfAHzrCyUvfbEbRkrYFC
-  - bad.account 5XXXBadWifXXXdjv29iDvkwn3EQYZ9jqfAHzrCyUvfbEbRkrYFC
+- ticos 5Htn7i56gRFrhTeZA91vX2oopvrBNU4SyeoKy6hXsJ1v9g6PUN3
+- teamcr 5KTgUcLhEHDvEdsexVqHmcGecHtD7xiTFWofy42o8YMDKkLpmrK
+- saprissa 5JaGCo7KD1BJwKNrUZ7RKu1Kvy5fRNPsHscgKYEKdyhQZYJ6tV4
 
-:bots: booster
+:bots: appreciator smartsteem postpromoter booster upme 
+#:bots: tuanis 
 :skip_accounts: leeroy.jenkins the.masses danlarimer ned-reddit-login
 :skip_tags: nsfw test
 # :only_tags: steemit

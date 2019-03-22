@@ -2,20 +2,27 @@ GEM
   remote: https://rubygems.org/
   specs:
     awesome_print (1.8.0)
-    bitcoin-ruby (0.0.13)
+    bitcoin-ruby (0.0.19)
+      eventmachine
+      ffi
+      scrypt
     byebug (10.0.2)
-    connection_pool (2.2.1)
-    ffi (1.9.18)
-    hashie (3.5.6)
-    json (2.1.0)
+    connection_pool (2.2.2)
+    eventmachine (1.2.7)
+    ffi (1.10.0)
+    ffi-compiler (1.0.1)
+      ffi (>= 1.0.0)
+      rake
+    hashie (3.6.0)
+    json (2.2.0)
     little-plugger (1.1.4)
     logging (2.2.2)
       little-plugger (~> 1.1)
       multi_json (~> 1.10)
-    multi_json (1.12.2)
+    multi_json (1.13.1)
     net-http-persistent (3.0.0)
       connection_pool (~> 2.2)
-    radiator (0.3.12)
+    radiator (0.4.4)
       awesome_print (~> 1.7, >= 1.7.0)
       bitcoin-ruby (~> 0.0, >= 0.0.11)
       ffi (~> 1.9, >= 1.9.18)
@@ -23,6 +30,9 @@ GEM
       json (~> 2.0, >= 2.0.2)
       logging (~> 2.2, >= 2.2.0)
       net-http-persistent (>= 2.5.2)
+    rake (12.3.2)
+    scrypt (3.0.6)
+      ffi-compiler (>= 1.0, < 2.0)
 
 PLATFORMS
   ruby
@@ -33,4 +43,4 @@ DEPENDENCIES
   radiator
 
 BUNDLED WITH
-   1.17.1
+   1.17.3

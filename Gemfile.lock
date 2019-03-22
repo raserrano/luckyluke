@@ -3,6 +3,7 @@ GEM
   specs:
     awesome_print (1.8.0)
     bitcoin-ruby (0.0.13)
+    byebug (10.0.2)
     connection_pool (2.2.1)
     ffi (1.9.18)
     hashie (3.5.6)
@@ -28,7 +29,8 @@ PLATFORMS
 
 DEPENDENCIES
   awesome_print
+  byebug (~> 10.0)
   radiator
 
 BUNDLED WITH
-   1.16.0.pre.3
+   1.17.1

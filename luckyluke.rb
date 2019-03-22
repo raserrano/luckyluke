@@ -6,7 +6,6 @@
 require 'rubygems'
 require 'bundler/setup'
 require 'yaml'
-require 'byebug'
 # require 'irb'
 
 Bundler.require
@@ -45,7 +44,6 @@ def parse_voters(voters)
     hash
   when Array
     a = voters.map{ |v| v.split(' ')}.flatten.each_slice(2)
-
     return a.to_h if a.respond_to? :to_h
 
     hash = {}
@@ -114,6 +112,7 @@ rules = @config[:voting_rules]
   max_payout: rules[:max_payout],
   max_payout_asset: rules[:max_payout].to_s.split(' ').last,
   max_payout_amount: rules[:max_payout].to_s.split(' ').first.to_f,
+  max_votes: rules[:max_votes].to_i,
 }
 
 unless @voting_rules[:vote_weight] == 'dynamic'
@@ -452,7 +451,6 @@ def min_trending_rep(limit)
 end
 
 def skip?(comment, voters)
-  byebug
   if bots_already_voted?(comment)
     puts "Skipped, cannot front-run:\n\t@#{comment.author}/#{comment.permlink}"
     return true
@@ -515,6 +513,11 @@ def skip?(comment, voters)
 
   if (comment.pending_payout_value.split(' ').first.to_f > @voting_rules.max_payout_amount)
     puts "Skipped, pending payout too much:\n\t@#{comment.author}/#{comment.permlink}"
+    return true
+  end
+
+  if (all_voters.count > @voting_rules.max_votes)
+    puts "Skipped, too much votes :\n\t@#{comment.author}/#{comment.permlink}"
     return true
   end
 

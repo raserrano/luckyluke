@@ -10,7 +10,7 @@
 # 3. ... updated luckylike.yml.
 # 4. ... installed rvm and ruby-2.4.2 (if not, see: https://rvm.io).
 
-cd $HOME/luckyluke
+cd $HOME/projects/luckyluke
 
 current_pid="`/bin/cat $HOME/luckyluke/luckyluke.pid`"
 
